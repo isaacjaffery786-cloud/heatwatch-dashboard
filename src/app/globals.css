@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+body {
+  background-color: #070b14;
+  background-image:
+    radial-gradient(1100px 520px at 12% -10%, rgba(239, 68, 68, 0.13), transparent 60%),
+    radial-gradient(900px 480px at 88% -5%, rgba(249, 115, 22, 0.1), transparent 55%),
+    radial-gradient(1100px 700px at 50% 115%, rgba(14, 165, 233, 0.07), transparent 60%);
+  color: #e2e8f0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.hw-card {
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 1rem;
+  box-shadow:
+    0 1px 2px rgba(2, 6, 23, 0.06),
+    0 16px 34px -18px rgba(2, 6, 23, 0.35);
+}
+
+.hw-input {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.625rem;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hw-input:focus {
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
+}
+
+.hw-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 0.3rem;
+}
+
+.hw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 9999px;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.hw-toggle {
+  border-radius: 0.55rem;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.hw-toggle:hover {
+  color: #0f172a;
+  background: #e2e8f0;
+}
+
+.hw-toggle[data-active="true"] {
+  color: #9a3412;
+  background: #ffffff;
+  border-color: #fdba74;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+
+.hw-muted {
+  color: #64748b;
+}
+
+.hw-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.hw-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 8px;
+}
+
+.hw-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+}
+
+.hw-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@keyframes hw-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+.hw-live-dot {
+  animation: hw-pulse 2.2s ease-in-out infinite;
+}

@@ -1,0 +1,31 @@
+{
+  "name": "heatwatch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HEATWATCH - Heatwave Monitoring & Early Warning Dashboard",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "preprocess": "node scripts/preprocess.mjs"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.52.0",
+    "next": "^15.5.27",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-leaflet": "^5.0.0",
+    "recharts": "^3.10.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "5.9"
+  }
+}
