@@ -1,90 +1,134 @@
 import type { Dataset } from "./dataset";
+import { COLUMNS } from "./dataset";
 
-/**
- * Loads the HEATWATCH dataset from the Supabase API instead of the local JSON
- * file. The route /api/records?page=N returns 25 rows per page with the exact
- * dashboard column order (Record_ID, Date, Time, ...). We fetch every page
- * until hasMore is false, flatten the positional rows, and return a Dataset of
- * the same shape the dashboard and analytics expect.
- *
- * Each page is fetched sequentially; the accumulator caches rows so concurrent
- * callers share one in-flight fetch. The promise is cached so repeated calls do
- * not trigger duplicate paginated fetches.
- */
+const PAGE_SIZE = 1000;
+const CONCURRENCY = 5;
+const MAX_ROWS = 100000;
+
+type PageResponse = {
+  columns: string[];
+  rows: Dataset["rows"];
+  page: number;
+  pageSize: number;
+  total: number;
+  nextPage: number | null;
+  hasMore: boolean;
+};
+
 let cached: Promise<Dataset> | null = null;
-let fetching: Promise<Dataset> | null = null;
 
-async function fetchPage(page: number): Promise<{ rows: Dataset["rows"]; hasMore: boolean }> {
-  const res = await fetch(`/api/records?page=${page}`);
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `Failed to load records from API (HTTP ${res.status})${body ? ": " + body : ""}`
-    );
+async function fetchPage(page: number): Promise<PageResponse> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+
+  try {
+    const response = await fetch(`/api/records?page=${page}`, {
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to load dataset page ${page} (HTTP ${response.status})` +
+          (body ? `: ${body.slice(0, 300)}` : "")
+      );
+    }
+
+    const data = (await response.json()) as PageResponse;
+
+    if (
+      data.page !== page ||
+      !Array.isArray(data.rows) ||
+      typeof data.total !== "number" ||
+      typeof data.hasMore !== "boolean"
+    ) {
+      throw new Error(`Invalid response received for dataset page ${page}.`);
+    }
+
+    return data;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Loading dataset page ${page} timed out after 20 seconds.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  const data = (await res.json()) as {
-    rows: Dataset["rows"];
-    hasMore: boolean;
-    nextPage: number | null;
-    page: number;
-    pageSize: number;
-    total: number;
-  };
-  return {
-    rows: data.rows,
-    hasMore: data.hasMore ?? false,
-  };
 }
 
-export async function loadDataset(): Promise<Dataset> {
-  // On first call, trigger the fetch chain. Subsequent calls reuse the cached
-  // promise, so concurrent components share one fetch/pagination chain.
+export function loadDataset(): Promise<Dataset> {
   if (!cached) {
-    fetching = fetchDataset();
-    cached = fetching;
+    cached = fetchDataset().catch((error) => {
+      cached = null;
+      console.error("[loadDataset] Dataset loading failed:", error);
+      throw error;
+    });
   }
+
   return cached;
 }
 
 async function fetchDataset(): Promise<Dataset> {
-  const rows: Dataset["rows"] = [];
-  let page = 0;
-  let hasMore = true; // keep fetching until the route says hasMore is false
-  let prevCount = 0;
+  const first = await fetchPage(0);
+  const total = first.total;
 
-  while (hasMore) {
-    const { rows: pageRows, hasMore: nextHasMore } = await fetchPage(page);
-    const added = pageRows.length;
-    rows.push(...pageRows);
+  if (total < 0 || total > MAX_ROWS) {
+    throw new Error(`Unexpected dataset size: ${total} records.`);
+  }
 
-    // Guard against infinite loops / unexpected API behavior: stop after a
-    // large, sane bound (well above 50,000, the documented record count).
-    if (rows.length > 100000) {
-      console.error(
-        `[loadDataset] Stopped early: row count exceeded safety bound (100000).`
+  if (first.rows.length > PAGE_SIZE || first.rows.length > total) {
+    throw new Error("The first dataset page returned an unexpected number of rows.");
+  }
+
+  const pages: Dataset["rows"][] = new Array(
+    Math.ceil(total / PAGE_SIZE)
+  );
+  pages[0] = first.rows;
+
+  const pageCount = pages.length;
+
+  for (let startPage = 1; startPage < pageCount; startPage += CONCURRENCY) {
+    const pageNumbers = Array.from(
+      { length: Math.min(CONCURRENCY, pageCount - startPage) },
+      (_, index) => startPage + index
+    );
+
+    const results = await Promise.all(pageNumbers.map(fetchPage));
+
+    for (const result of results) {
+      if (result.total !== total || result.pageSize !== PAGE_SIZE) {
+        throw new Error("Dataset pagination changed while loading. Please retry.");
+      }
+
+      if (result.rows.length > PAGE_SIZE) {
+        throw new Error(`Dataset page ${result.page} exceeded its page size.`);
+      }
+
+      const expectedLength = Math.min(
+        PAGE_SIZE,
+        total - result.page * PAGE_SIZE
       );
-      break;
-    }
 
-    // If a page returns zero rows but the loop thinks there is more, stop.
-    if (added === 0 && page > 0) {
-      hasMore = false;
-      break;
-    }
+      if (result.rows.length !== expectedLength) {
+        throw new Error(
+          `Dataset page ${result.page} returned ${result.rows.length} rows; expected ${expectedLength}.`
+        );
+      }
 
-    hasMore = nextHasMore;
-    page += 1;
-
-    // Prevent duplicate records in case the API ever sends overlapping pages.
-    if (rows.length > prevCount) {
-      prevCount = rows.length;
-    } else {
-      break; // No progress made; abort to avoid an infinite loop.
+      pages[result.page] = result.rows;
     }
   }
 
-  // The API route exposes the original dashboard column order in DASHBOARD_COLUMNS.
-  const apiColumns = [
+  const rows = pages.flat();
+
+  if (rows.length !== total) {
+    throw new Error(
+      `Dataset is incomplete: received ${rows.length} of ${total} records.`
+    );
+  }
+
+  const columns = [
     "Record_ID",
     "Date",
     "Time",
@@ -105,22 +149,16 @@ async function fetchDataset(): Promise<Dataset> {
     "Heat_Index_C",
     "Heatwave_Label",
     "Heatwave_Severity",
-  ] as const;
+  ];
 
-  // Prefer the API's column list where it is the exact original dashboard order;
-  // otherwise fall back to the canonical order defined in src/lib/dataset.ts.
-  const base = (await import("./dataset")).COLUMNS;
-  const useApiColumns = apiColumns.length === 20 && Array.isArray(apiColumns) && apiColumns.length === 20;
-
-  // Cast through `unknown` to bypass strict-boolean/type-guard overlap checks.
-  const columnsValue = useApiColumns
-    ? (apiColumns as unknown as string[])
-    : (base as unknown as string[]);
+  if (COLUMNS.length !== columns.length) {
+    throw new Error("Dashboard column count does not match the API dataset.");
+  }
 
   return {
     version: 1,
     rowCount: rows.length,
-    columns: columnsValue,
+    columns,
     dictionaries: {
       City: [
         "Ahmedabad", "Chennai", "Delhi", "Hyderabad", "Jaipur", "Kolkata",
