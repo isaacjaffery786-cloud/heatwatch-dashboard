@@ -120,7 +120,7 @@ function mapSeverity(value: unknown): number {
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const page = Math.max(0, Number(url.searchParams.get("page")) || 0);
-  const pageSize = 25;
+  const pageSize = 1000;
   const start = page * pageSize;
   const end = start + pageSize - 1;
 
